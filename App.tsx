@@ -13,14 +13,21 @@ const blobUrlToBase64 = async (blobUrl: string): Promise<string> => {
   // If it's already base64, return it
   if (blobUrl.startsWith('data:')) return blobUrl;
   
-  const response = await fetch(blobUrl);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  try {
+    const response = await fetch(blobUrl);
+    if (!response.ok) throw new Error('Network response was not ok');
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.warn("Failed to fetch blob URL, it might be expired or from another session:", blobUrl);
+    // Return a transparent 1x1 pixel base64 image as fallback
+    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  }
 };
 
 function App() {

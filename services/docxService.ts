@@ -32,22 +32,56 @@ const getImageType = (mimeType: string): "png" | "jpg" | "gif" | "bmp" => {
 
 // Helper to convert base64/url to ArrayBuffer for docx
 // Now supports cropping via Canvas if a cropHeight is provided
+const TRANSPARENT_PNG = new Uint8Array([
+  137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+  0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0,
+  0, 0, 11, 73, 68, 65, 84, 8, 215, 99, 96, 0, 2, 0, 0, 5, 0,
+  1, 226, 38, 5, 155, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+]).buffer;
+
 const processImage = async (url: string, cropHeight?: number): Promise<{ data: ArrayBuffer, type: "png" | "jpg" | "gif" | "bmp" }> => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = url;
     
+    const resolveFallback = () => {
+        resolve({ data: TRANSPARENT_PNG, type: "png" });
+    };
+
     const resolveOriginal = () => {
+        if (url.startsWith('data:')) {
+            // Parse data URI manually to avoid fetch issues on large strings
+            try {
+                const arr = url.split(',');
+                const bstr = atob(arr[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while(n--){
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+                const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+                resolve({ data: u8arr.buffer, type: getImageType(mime) });
+            } catch (e) {
+                resolveFallback();
+            }
+            return;
+        }
+
         fetch(url)
-            .then(r => r.blob())
+            .then(r => {
+                if (!r.ok) throw new Error('Network response was not ok');
+                return r.blob();
+            })
             .then(async blob => {
                 resolve({ 
                     data: await blob.arrayBuffer(), 
                     type: getImageType(blob.type) 
                 });
             })
-            .catch(reject);
+            .catch((err) => {
+                console.warn("Failed to fetch image:", url, err);
+                resolveFallback();
+            });
     };
 
     img.onload = () => {
@@ -88,7 +122,7 @@ const processImage = async (url: string, cropHeight?: number): Promise<{ data: A
                 });
              }
              else {
-                resolve({ data: new ArrayBuffer(0), type: "png" });
+                resolveFallback();
              }
           }, 'image/png');
         } else {
@@ -102,6 +136,8 @@ const processImage = async (url: string, cropHeight?: number): Promise<{ data: A
     img.onerror = () => {
       resolveOriginal();
     };
+    
+    img.src = url;
   });
 };
 
